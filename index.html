@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard Envíos</title>
+
+  <!-- SheetJS para leer Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+
+  <!-- Chart.js para el gráfico -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{--bg:#0b1220;--card:#121b2e;--muted:#9fb0d0;--text:#eaf0ff;--ok:#2ecc71;--bad:#ff5c5c;--line:rgba(255,255,255,.08);--shadow:0 10px 30px rgba(0,0,0,.35);--radius:16px}
+    *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+    body{margin:0;background:radial-gradient(1200px 700px at 10% 10%, #192a57 0%, var(--bg) 60%);color:var(--text)}
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px}
+    header{display:flex;gap:14px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+    h1{margin:0;font-size:22px}
+    .sub{color:var(--muted);font-size:13px;margin-top:6px}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .file{display:inline-flex;gap:10px;align-items:center;background:rgba(255,255,255,.06);border:1px solid var(--line);padding:10px 12px;border-radius:12px}
+    input[type="file"]{color:var(--muted)}
+    .select{background:rgba(255,255,255,.06);border:1px solid var(--line);padding:10px 12px;border-radius:12px;color:var(--text);outline:none}
+    .btn{background:#2b6cff;border:none;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;font-weight:600;box-shadow:var(--shadow)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:18px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+    .kpi{grid-column:span 3}
+    .kpi .label{color:var(--muted);font-size:12px}
+    .kpi .value{font-size:28px;margin-top:6px;font-weight:800}
+    .kpi.ok .value{color:var(--ok)}
+    .kpi.bad .value{color:var(--bad)}
+    .kpi .hint{color:var(--muted);font-size:12px;margin-top:6px}
+    .chart{grid-column:span 5; min-height:260px}
+    .details{grid-column:span 7}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--muted);font-size:12px}
+    .dot{width:8px;height:8px;border-radius:50%}
+    .dot.ok{background:var(--ok)}
+    .dot.bad{background:var(--bad)}
+    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+    th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    th{color:var(--muted);font-weight:650}
+    td{color:#dfe8ff}
+    .status{font-weight:800;font-size:12px;letter-spacing:.3px;padding:4px 8px;border-radius:999px;display:inline-block}
+    .status.DELIVERED{background:rgba(46,204,113,.16);color:var(--ok);border:1px solid rgba(46,204,113,.35)}
+    .status.FAILED{background:rgba(255,92,92,.14);color:var(--bad);border:1px solid rgba(255,92,92,.35)}
+    .muted{color:var(--muted)}
+    .warn{margin-top:14px;color:var(--muted);font-size:12px;line-height:1.4}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+    .small{font-size:12px;color:var(--muted)}
+    .banner{margin-top:14px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text)}
+    .banner b{color:white}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Dashboard de Envíos</h1>
+        <div class="sub">Sube tu Excel y verás cuántos <b>DELIVERED</b> (concretados) y cuántos <b>FAILED</b> (fallas).</div>
+        <div id="libStatus" class="banner"></div>
+      </div>
+
+      <div class="controls">
+        <label class="file">
+          <span class="small">Archivo (.xlsx)</span>
+          <input id="fileInput" type="file" accept=".xlsx,.xls" />
+        </label>
+
+        <select id="sheetSelect" class="select" disabled>
+          <option value="">Hoja: (selecciona)</option>
+        </select>
+
+        <button id="processBtn" class="btn" disabled>Procesar</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card kpi">
+        <div class="label">TOTAL</div>
+        <div class="value" id="kpiTotal">0</div>
+        <div class="hint">Registros leídos</div>
+      </div>
+
+      <div class="card kpi ok">
+        <div class="label">CONCRETADOS</div>
+        <div class="value" id="kpiDelivered">0</div>
+        <div class="hint">ESTATUS = DELIVERED</div>
+      </div>
+
+      <div class="card kpi bad">
+        <div class="label">FALLAS</div>
+        <div class="value" id="kpiFailed">0</div>
+        <div class="hint">ESTATUS = FAILED</div>
+      </div>
+
+      <div class="card kpi">
+        <div class="label">% ÉXITO</div>
+        <div class="value" id="kpiRate">0%</div>
+        <div class="hint">DELIVERED / TOTAL</div>
+      </div>
+
+      <div class="card chart">
+        <div class="row">
+          <span class="pill"><span class="dot ok"></span> DELIVERED</span>
+          <span class="pill"><span class="dot bad"></span> FAILED</span>
+          <span class="pill" id="detectedStatusCol">Columna ESTATUS: <b class="muted">—</b></span>
+        </div>
+        <canvas id="donut" style="margin-top:10px"></canvas>
+        <div class="warn">
+          Nota: el dashboard detecta la columna por el nombre <b>ESTATUS</b> (o variantes como Status/Estatus).
+          Si en tu Excel está distinto, renómbrala a <b>ESTATUS</b>.
+        </div>
+      </div>
+
+      <div class="card details">
+        <div class="row">
+          <div class="pill">Vista previa</div>
+          <div class="pill muted">Mostrando <span id="shownCount">0</span> filas</div>
+        </div>
+
+        <div style="overflow:auto;max-height:340px">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th>FECHA</th>
+                <th>CELULAR</th>
+                <th>ESTATUS</th>
+                <th>MENSAJE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" class="muted">Sube un Excel para ver datos…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const libStatus = document.getElementById('libStatus');
+
+  function libsOk(){
+    const okXLSX = typeof window.XLSX !== "undefined";
+    const okChart = typeof window.Chart !== "undefined";
+    if (okXLSX && okChart){
+      libStatus.innerHTML = `✅ Librerías cargadas: <b>XLSX</b> y <b>Chart.js</b>.`;
+      return true;
+    }
+    libStatus.innerHTML =
+      `⚠️ No se cargaron las librerías necesarias.<br>
+       - XLSX: <b>${okXLSX ? "OK" : "NO"}</b><br>
+       - Chart.js: <b>${okChart ? "OK" : "NO"}</b><br><br>
+       Esto pasa si estás sin internet o tu red bloquea los CDN. Con internet debería funcionar.`;
+    return false;
+  }
+
+  const fileInput = document.getElementById('fileInput');
+  const sheetSelect = document.getElementById('sheetSelect');
+  const processBtn = document.getElementById('processBtn');
+
+  const kpiTotal = document.getElementById('kpiTotal');
+  const kpiDelivered = document.getElementById('kpiDelivered');
+  const kpiFailed = document.getElementById('kpiFailed');
+  const kpiRate = document.getElementById('kpiRate');
+  const shownCount = document.getElementById('shownCount');
+  const detectedStatusCol = document.getElementById('detectedStatusCol');
+  const tableBody = document.querySelector('#dataTable tbody');
+
+  let workbook = null;
+  let donutChart = null;
+
+  function normalizeKey(k){
+    return String(k || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  }
+
+  function findStatusColumn(headers){
+    const candidates = ['estatus','status','estado'];
+    const norm = headers.map(h => ({ raw: h, norm: normalizeKey(h) }));
+    for (const c of candidates){
+      const found = norm.find(x => x.norm === c);
+      if (found) return found.raw;
+    }
+    const partial = norm.find(x => candidates.some(c => x.norm.includes(c)));
+    return partial ? partial.raw : null;
+  }
+
+  function safeText(v){ return (v === null || v === undefined) ? '' : String(v); }
+
+  function parseExcel(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try{
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          resolve(wb);
+        }catch(err){ reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function setKPIs({total, delivered, failed}){
+    kpiTotal.textContent = total;
+    kpiDelivered.textContent = delivered;
+    kpiFailed.textContent = failed;
+    const rate = total ? Math.round((delivered / total) * 100) : 0;
+    kpiRate.textContent = rate + '%';
+  }
+
+  function renderDonut(delivered, failed){
+    if (typeof Chart === "undefined") return; // por si chart no cargó
+    const ctx = document.getElementById('donut');
+    const data = { labels: ['DELIVERED', 'FAILED'], datasets: [{ data: [delivered, failed], borderWidth: 1 }] };
+    if (donutChart) donutChart.destroy();
+    donutChart = new Chart(ctx, { type: 'doughnut', data, options: { responsive: true, plugins: { legend: { labels: { color: '#eaf0ff' } } } } });
+  }
+
+  function renderTable(rows, statusCol){
+    tableBody.innerHTML = '';
+    const maxRows = 50;
+    const show = rows.slice(0, maxRows);
+
+    if (!show.length){
+      tableBody.innerHTML = `<tr><td colspan="4" class="muted">No hay filas para mostrar.</td></tr>`;
+      shownCount.textContent = 0;
+      return;
+    }
+
+    for (const r of show){
+      const fecha = safeText(r['FECHA'] ?? r['Fecha'] ?? r['fecha'] ?? '');
+      const celular = safeText(r['CELULAR'] ?? r['Celular'] ?? r['celular'] ?? '');
+      const mensaje = safeText(r['MENSAJE'] ?? r['Mensaje'] ?? r['mensaje'] ?? '');
+      const st = safeText(r[statusCol] ?? '').trim().toUpperCase();
+
+      const statusBadge = st ? `<span class="status ${st}">${st}</span>` : `<span class="muted">—</span>`;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${fecha || '<span class="muted">—</span>'}</td>
+        <td>${celular || '<span class="muted">—</span>'}</td>
+        <td>${statusBadge}</td>
+        <td>${mensaje || '<span class="muted">—</span>'}</td>
+      `;
+      tableBody.appendChild(tr);
+    }
+
+    shownCount.textContent = show.length;
+  }
+
+  async function onFile(){
+    const file = fileInput.files?.[0];
+
+    sheetSelect.innerHTML = `<option value="">Hoja: (selecciona)</option>`;
+    sheetSelect.disabled = true;
+    processBtn.disabled = true;
+
+    if (!file) return;
+    if (!libsOk()) return;
+
+    try{
+      workbook = await parseExcel(file);
+
+      workbook.SheetNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sheetSelect.appendChild(opt);
+      });
+
+      // Auto-selecciona la primera hoja
+      if (workbook.SheetNames.length){
+        sheetSelect.value = workbook.SheetNames[0];
+        sheetSelect.disabled = false;
+        processBtn.disabled = false; // ✅ habilita procesar
+      }
+    }catch(e){
+      console.error(e);
+      alert("No pude leer el Excel. Revisa que sea .xlsx válido.");
+    }
+  }
+
+  function process(){
+    if (!workbook || !sheetSelect.value) return;
+
+    const sheetName = sheetSelect.value;
+    const ws = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+    if (!rows.length){
+      setKPIs({total:0, delivered:0, failed:0});
+      renderDonut(0,0);
+      renderTable([], 'ESTATUS');
+      detectedStatusCol.innerHTML = `Columna ESTATUS: <b class="muted">—</b>`;
+      return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    const statusCol = findStatusColumn(headers);
+
+    detectedStatusCol.innerHTML = `Columna ESTATUS: <b>${statusCol ? statusCol : 'NO ENCONTRADA'}</b>`;
+
+    if (!statusCol){
+      setKPIs({total: rows.length, delivered:0, failed:0});
+      renderDonut(0,0);
+      renderTable(rows, headers[0]);
+      alert("No encontré la columna ESTATUS/Status/Estatus. Renómbrala a 'ESTATUS' y vuelve a intentar.");
+      return;
+    }
+
+    let delivered = 0, failed = 0;
+    for (const r of rows){
+      const st = safeText(r[statusCol]).trim().toUpperCase();
+      if (st === 'DELIVERED') delivered++;
+      else if (st === 'FAILED') failed++;
+    }
+
+    setKPIs({total: rows.length, delivered, failed});
+    renderDonut(delivered, failed);
+    renderTable(rows, statusCol);
+  }
+
+  // Inicial: valida libs
+  libsOk();
+
+  fileInput.addEventListener('change', () => { onFile(); });
+  sheetSelect.addEventListener('change', () => { processBtn.disabled = !sheetSelect.value; });
+  processBtn.addEventListener('click', process);
+</script>
+</body>
+</html>
